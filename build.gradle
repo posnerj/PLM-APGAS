@@ -1,0 +1,56 @@
+plugins {
+    id "com.diffplug.gradle.spotless" version "3.10.0"
+}
+
+group 'PLM-APGAS'
+version '1.0-SNAPSHOT'
+
+apply plugin: 'java'
+apply plugin: 'idea'
+apply plugin: 'eclipse'
+apply plugin: "com.diffplug.gradle.spotless"
+
+sourceCompatibility = 10
+targetCompatibility = 10
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    compile group: 'com.hazelcast', name: 'hazelcast', version: '3.10'
+    compile group: 'com.esotericsoftware', name: 'kryo', version: '4.0.2'
+}
+
+sourceSets {
+    main {
+        java {
+            srcDirs = ["src"]
+        }
+    }
+}
+
+
+task copyToLib << {
+    delete fileTree(dir: "lib")
+    [ 'compile','runtime','testCompile' ].each { mode ->
+        copy {
+            from configurations.getByName(mode).files
+            into 'lib'
+        }
+    }
+}
+
+spotless {
+    java {
+        googleJavaFormat("1.5")
+    }
+}
+
+afterEvaluate {
+    tasks.getByName('spotlessCheck').dependsOn(tasks.getByName('spotlessApply'))
+}
+
+
+build.finalizedBy(copyToLib)
+copyToLib.dependsOn(build)
