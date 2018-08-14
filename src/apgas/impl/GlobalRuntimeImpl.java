@@ -111,6 +111,9 @@ public final class GlobalRuntimeImpl extends GlobalRuntime {
   /** Status of loggerAsyncAny */
   private boolean loggerAsyncAny;
 
+  /** Num of local workers * */
+  final int numLocalWorkers;
+
   /**
    * Constructs a new {@link GlobalRuntimeImpl} instance.
    *
@@ -124,10 +127,10 @@ public final class GlobalRuntimeImpl extends GlobalRuntime {
       // parse configuration
       final int p = Integer.getInteger(Configuration.APGAS_PLACES, 1);
       System.setProperty(Configuration.APGAS_PLACES, Integer.toString(p));
-      final int threads =
+      numLocalWorkers =
           Integer.getInteger(
               Configuration.APGAS_THREADS, Runtime.getRuntime().availableProcessors());
-      System.setProperty(Configuration.APGAS_THREADS, Integer.toString(threads));
+      System.setProperty(Configuration.APGAS_THREADS, Integer.toString(numLocalWorkers));
       final String master = System.getProperty(Configuration.APGAS_MASTER);
       final String hostfile = System.getProperty(Configuration.APGAS_HOSTFILE);
       verboseSerialization = Boolean.getBoolean(Configuration.APGAS_VERBOSE_SERIALIZATION);
@@ -245,7 +248,7 @@ public final class GlobalRuntimeImpl extends GlobalRuntime {
       }
 
       // initialize scheduler
-      pool = new MyForkJoinPool(threads, maxThreads, new WorkerFactory(), null, false);
+      pool = new MyForkJoinPool(numLocalWorkers, maxThreads, new WorkerFactory(), null, false);
       // instead of this original ctl hack, we use the novel constructor call in MyForkJoinPool
       // since Java 10
       //      final Field ctl = ForkJoinPool.class.getDeclaredField("ctl");
@@ -1683,5 +1686,14 @@ public final class GlobalRuntimeImpl extends GlobalRuntime {
    */
   public Worker getCurrentWorker() {
     return (Worker) Thread.currentThread();
+  }
+
+  /**
+   * Returns the number of local workers (same on every place)
+   *
+   * @return the number of local workers
+   */
+  public int numLocalWorkers() {
+    return numLocalWorkers;
   }
 }
