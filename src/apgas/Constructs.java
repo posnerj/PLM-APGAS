@@ -455,4 +455,13 @@ public final class Constructs {
   public static Worker getCurrentWorker() {
     return GlobalRuntime.getRuntimeImpl().getCurrentWorker();
   }
+
+  /**
+   * Returns the number of local workers (same on every place)
+   *
+   * @return the number of local workers
+   */
+  public static int numLocalWorkers() {
+    return GlobalRuntime.getRuntimeImpl().numLocalWorkers();
+  }
 }
