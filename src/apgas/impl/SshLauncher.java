@@ -67,20 +67,14 @@ final class SshLauncher implements Launcher {
           System.err.println("[APGAS] Spawning new place: " + String.join(" ", command));
         }
       } else {
-        //        command.add(0, "ssh");
-        //        command.add(1, "-t");
-        //        command.add(2, "-t");
-        //        command.add(3, host);
-        command.add(0, "srun");
-        command.add(1, "-N 1");
-        command.add(2, "-n 1");
-        command.add(3, "-w");
-        command.add(4, host);
+        command.add(0, "ssh");
+        command.add(1, "-t");
+        command.add(2, "-t");
+        command.add(3, host);
         if (verbose) {
           System.err.println("[APGAS] Spawning new place: " + String.join(" ", command));
         }
         process = pb.start();
-        command.remove(0); // new
         command.remove(0);
         command.remove(0);
         command.remove(0);
@@ -112,22 +106,16 @@ final class SshLauncher implements Launcher {
     } catch (final UnknownHostException e) {
     }
     if (!local) {
-      //        command.add(0, "ssh");
-      //        command.add(1, "-t");
-      //        command.add(2, "-t");
-      //        command.add(3, host);
-      command.add(0, "srun");
-      command.add(1, "-N 1");
-      command.add(2, "-n 1");
-      command.add(3, "-w");
-      command.add(4, host);
+      command.add(0, "ssh");
+      command.add(1, "-t");
+      command.add(2, "-t");
+      command.add(3, host);
     }
     process = pb.start();
     if (verbose) {
       System.err.println("[APGAS] Spawning new place: " + String.join(" ", command));
     }
     if (!local) {
-      command.remove(0); // new
       command.remove(0);
       command.remove(0);
       command.remove(0);
