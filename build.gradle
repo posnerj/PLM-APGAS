@@ -10,8 +10,8 @@ apply plugin: 'idea'
 apply plugin: 'eclipse'
 apply plugin: "com.diffplug.gradle.spotless"
 
-sourceCompatibility = 10
-targetCompatibility = 10
+sourceCompatibility = 11
+targetCompatibility = 11
 
 repositories {
     mavenCentral()
