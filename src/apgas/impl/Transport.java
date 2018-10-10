@@ -34,9 +34,7 @@ import com.hazelcast.core.Member;
 import com.hazelcast.core.MemberAttributeEvent;
 import com.hazelcast.core.MembershipEvent;
 import com.hazelcast.spi.ExecutionService;
-import java.net.InetAddress;
 import java.net.InetSocketAddress;
-import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.Map;
@@ -116,18 +114,6 @@ public class Transport
     }
 
     NetworkConfig networkConfig = config.getNetworkConfig();
-
-    // works at kassel cluster
-    try {
-      final String hostName = InetAddress.getLocalHost().getHostName();
-      if (hostName.contains(".its.uni-kassel.de")
-          && false == (hostName.contains("its-cs1.") || hostName.contains("its-cs10."))) {
-        System.err.println("[APGAS] sets network config to kassel cluster");
-        networkConfig.getInterfaces().setEnabled(true).addInterface("141.51.205.*");
-      }
-    } catch (UnknownHostException e) {
-      e.printStackTrace();
-    }
 
     if (compact) {
       config.setProperty("hazelcast.operation.thread.count", "2");
