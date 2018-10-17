@@ -72,6 +72,8 @@ public final class GlobalRuntimeImpl extends GlobalRuntime {
   final MyForkJoinPool pool;
   /** The resilient map from finish IDs to finish states. */
   final IMap<GlobalID, ResilientFinishState> resilientFinishMap;
+  /** Num of local workers * */
+  final int numLocalWorkers;
   /** The value of the APGAS_RESILIENT system property. */
   private final boolean resilient;
   /** The finish factory. */
@@ -96,23 +98,16 @@ public final class GlobalRuntimeImpl extends GlobalRuntime {
   private Consumer<Place> handler;
   /** Performs inter-place work stealing for asyncAny */
   private ManagementWorker manWorker;
-
   /** Holds the Thread Result when using asyncAny */
   private ResultAsyncAny[] result;
   /** When set to false, no more asyncAnyTasks can be submitted */
   private boolean allowMoreAsyncAnyTask = true;
-
   /** True if shutdown is in progress. */
   private boolean dying;
-
   /** Place internal result */
   private ResultAsyncAny partialResult;
-
   /** Status of loggerAsyncAny */
   private boolean loggerAsyncAny;
-
-  /** Num of local workers * */
-  final int numLocalWorkers;
 
   /**
    * Constructs a new {@link GlobalRuntimeImpl} instance.
@@ -179,7 +174,7 @@ public final class GlobalRuntimeImpl extends GlobalRuntime {
             System.err.println(
                 "[APGAS] Unable to instantiate launcher: "
                     + launcherName
-                    + ". Using default launcher.");
+                    + ". Using default launcher (ssh).");
           }
         }
         if (localLauncher == null) {
@@ -281,28 +276,48 @@ public final class GlobalRuntimeImpl extends GlobalRuntime {
       if (host == null) {
         host = localhost;
       }
+
       try {
         final Enumeration<NetworkInterface> networkInterfaces =
             NetworkInterface.getNetworkInterfaces();
         while (networkInterfaces.hasMoreElements()) {
           final NetworkInterface ni = networkInterfaces.nextElement();
-          if (!InetAddress.getByName(host).isReachable(ni, 0, 100)) {
-            continue;
+          try {
+            if (!InetAddress.getByName(host.split(":")[0]).isReachable(ni, 0, 100)) {
+              if (true == verboseLauncher) {
+                System.err.println(
+                    "[APGAS] host " + host + " is not reachable with network interface " + ni);
+              }
+              continue;
+            }
+          } catch (Throwable t) {
+            if (true == verboseLauncher) {
+              System.out.println("[APGAS]: unexpected error in finding host");
+            }
+            t.printStackTrace();
           }
+
           final Enumeration<InetAddress> e = ni.getInetAddresses();
           while (e.hasMoreElements()) {
             final InetAddress inetAddress = e.nextElement();
             if (inetAddress.isLoopbackAddress() || inetAddress instanceof Inet6Address) {
               continue;
             }
-            // infiniband
-            if (host.contains("its-cs") && !inetAddress.getHostAddress().contains("192.168.169")) {
-              continue;
+
+            // infiniband for kassel cluster
+            if ("apgas.impl.SrunKasselLauncher".equals(launcherName)) {
+              if (null != host
+                  && host.contains("its-cs")
+                  && false == inetAddress.getHostAddress().contains("192.168.169")) {
+                continue;
+              }
             }
+
             ip = inetAddress.getHostAddress();
           }
         }
       } catch (final IOException e) {
+        e.printStackTrace();
       }
 
       // check first entry of hostfile
@@ -329,8 +344,14 @@ public final class GlobalRuntimeImpl extends GlobalRuntime {
               (Transport)
                   Class.forName(transportName)
                       .getDeclaredConstructor(
-                          GlobalRuntimeImpl.class, String.class, String.class, boolean.class)
-                      .newInstance(this, master, ip, compact);
+                          GlobalRuntimeImpl.class,
+                          String.class,
+                          String.class,
+                          String.class,
+                          boolean.class,
+                          boolean.class,
+                          int.class)
+                      .newInstance(this, master, ip, launcherName, compact, kryo, backupCount);
         } catch (InstantiationException
             | IllegalAccessException
             | ExceptionInInitializerError
@@ -344,10 +365,10 @@ public final class GlobalRuntimeImpl extends GlobalRuntime {
         }
       }
       if (localTransport == null) {
-        localTransport = new Transport(this, master, ip, compact, kryo, backupCount);
+        localTransport = new Transport(this, master, ip, launcherName, compact, kryo, backupCount);
       }
       this.transport = localTransport;
-      if (verboseLauncher) {
+      if (true == verboseLauncher) {
         System.err.println("[APGAS] New place starting at " + localTransport.getAddress() + ".");
       }
 

@@ -34,7 +34,9 @@ import com.hazelcast.core.Member;
 import com.hazelcast.core.MemberAttributeEvent;
 import com.hazelcast.core.MembershipEvent;
 import com.hazelcast.spi.ExecutionService;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.Map;
@@ -97,6 +99,7 @@ public class Transport
       GlobalRuntimeImpl runtime,
       String master,
       String localhost,
+      String launcherName,
       boolean compact,
       boolean kryo,
       int backupCount) {
@@ -114,6 +117,22 @@ public class Transport
     }
 
     NetworkConfig networkConfig = config.getNetworkConfig();
+
+    if ("apgas.impl.SrunKasselLauncher".equals(launcherName)) {
+      try {
+        final String hostName = InetAddress.getLocalHost().getHostName();
+        if (null != hostName
+            && hostName.contains(".its.uni-kassel.de")
+            && false == (hostName.contains("its-cs1.") || hostName.contains("its-cs10."))
+            && null != localhost
+            && localhost.contains("141.51.169")) {
+          System.err.println("[APGAS] sets network config to kassel cluster (infiniband)");
+          networkConfig.getInterfaces().setEnabled(true).addInterface("141.51.169.*");
+        }
+      } catch (UnknownHostException e) {
+        e.printStackTrace();
+      }
+    }
 
     if (compact) {
       config.setProperty("hazelcast.operation.thread.count", "2");
