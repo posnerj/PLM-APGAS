@@ -308,7 +308,7 @@ public final class GlobalRuntimeImpl extends GlobalRuntime {
             if ("apgas.impl.SrunKasselLauncher".equals(launcherName)) {
               if (null != host
                   && host.contains("its-cs")
-                  && false == inetAddress.getHostAddress().contains("192.168.169")) {
+                  && false == inetAddress.getHostAddress().contains(SrunKasselLauncher.IPRANGE)) {
                 continue;
               }
             }

@@ -21,6 +21,8 @@ import java.util.List;
 /** The {@link SrunKasselLauncher} class implements a launcher using ssh. */
 final class SrunKasselLauncher implements Launcher {
 
+  public static String IPRANGE = "192.168.169";
+
   /** The processes we spawned. */
   private final List<Process> processes = new ArrayList<>();
 
