@@ -125,9 +125,15 @@ public class Transport
             && hostName.contains(".its.uni-kassel.de")
             && false == (hostName.contains("its-cs1.") || hostName.contains("its-cs10."))
             && null != localhost
-            && localhost.contains("141.51.169")) {
-          System.err.println("[APGAS] sets network config to kassel cluster (infiniband)");
-          networkConfig.getInterfaces().setEnabled(true).addInterface("141.51.169.*");
+            && localhost.contains(SrunKasselLauncher.IPRANGE)) {
+          System.err.println(
+              "[APGAS] sets network config to kassel cluster (infiniband "
+                  + SrunKasselLauncher.IPRANGE
+                  + ")");
+          networkConfig
+              .getInterfaces()
+              .setEnabled(true)
+              .addInterface(SrunKasselLauncher.IPRANGE + ".*");
         }
       } catch (UnknownHostException e) {
         e.printStackTrace();
