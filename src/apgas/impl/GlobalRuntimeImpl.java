@@ -280,6 +280,7 @@ public final class GlobalRuntimeImpl extends GlobalRuntime {
       try {
         final Enumeration<NetworkInterface> networkInterfaces =
             NetworkInterface.getNetworkInterfaces();
+
         while (networkInterfaces.hasMoreElements()) {
           final NetworkInterface ni = networkInterfaces.nextElement();
           try {
@@ -305,12 +306,9 @@ public final class GlobalRuntimeImpl extends GlobalRuntime {
             }
 
             // infiniband for kassel cluster
-            if ("apgas.impl.SrunKasselLauncher".equals(launcherName)) {
-              if (null != host
-                  && host.contains("its-cs")
-                  && false == inetAddress.getHostAddress().contains(SrunKasselLauncher.IPRANGE)) {
-                continue;
-              }
+            if ("apgas.impl.SrunKasselLauncher".equals(launcherName)
+                && false == inetAddress.getHostAddress().contains(SrunKasselLauncher.IPRANGE)) {
+              continue;
             }
 
             ip = inetAddress.getHostAddress();
@@ -334,6 +332,10 @@ public final class GlobalRuntimeImpl extends GlobalRuntime {
           System.err.println(
               "[APGAS] Unable to resolve first hostfile entry. Ignoring and using localhost instead.");
         }
+      }
+
+      if (true == verboseLauncher) {
+        System.err.println("[APGAS] found ip: " + (null == ip ? "null" : ip));
       }
 
       // initialize transport
