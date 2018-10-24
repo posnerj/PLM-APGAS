@@ -82,6 +82,7 @@ final class SrunKasselLauncher implements Launcher {
         command.remove(0);
         command.remove(0);
         command.remove(0);
+        command.remove(0);
       }
       synchronized (this) {
         if (dying <= 1) {

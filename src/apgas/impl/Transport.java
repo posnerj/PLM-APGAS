@@ -134,6 +134,9 @@ public class Transport
               .getInterfaces()
               .setEnabled(true)
               .addInterface(SrunKasselLauncher.IPRANGE + ".*");
+        } else {
+          System.err.println(
+              "[APGAS] WARNING: using apgas.impl.SrunKasselLauncher but NOT infiniband");
         }
       } catch (UnknownHostException e) {
         e.printStackTrace();
