@@ -20,6 +20,7 @@ import apgas.Place;
 import apgas.SerializableCallable;
 import apgas.SerializableJob;
 import apgas.impl.Finish.Factory;
+import apgas.util.ConsolePrinter;
 import apgas.util.GlobalID;
 import apgas.util.GlobalRef;
 import apgas.util.MyForkJoinPool;
@@ -654,7 +655,7 @@ public final class GlobalRuntimeImpl extends GlobalRuntime {
    * @param f the function to run
    */
   public void immediateAsyncAt(Place p, SerializableRunnable f) {
-    transport.send(p.id, f);
+    transport.sendImmediate(p.id, f);
   }
 
   /**
@@ -1095,7 +1096,7 @@ public final class GlobalRuntimeImpl extends GlobalRuntime {
 
     while (count.get().get() > 0) {
       try {
-        System.out.println("sleeping");
+        //        System.out.println("sleeping");
         TimeUnit.MILLISECONDS.sleep(100);
       } catch (InterruptedException e) {
         e.printStackTrace();
@@ -1166,6 +1167,65 @@ public final class GlobalRuntimeImpl extends GlobalRuntime {
    * @param cyclical how often is partial result reduced, -1 for never
    */
   public void finishAsyncAny(SerializableJob f, long cyclical) {
+    final GlobalRef<AtomicInteger> placesReady = new GlobalRef<>(new AtomicInteger(places.size()));
+
+    for (final Place p : places) {
+      Constructs.immediateAsyncAt(
+          p,
+          () -> {
+            boolean activeTasks = true;
+            int k = 0;
+            MyForkJoinPool localPool = GlobalRuntimeImpl.getRuntime().getPool();
+            while (true == activeTasks) {
+              activeTasks = false;
+              k++;
+              if (localPool.getActiveThreadCount() > 0) {
+                activeTasks = true;
+              }
+              if (false == localPool.isQuiescent()) {
+                activeTasks = true;
+              }
+              if (true == activeTasks) {
+                try {
+                  TimeUnit.MILLISECONDS.sleep(100);
+                  if (k >= 20) {
+                    k = 0;
+                    ConsolePrinter.getInstance()
+                        .println(
+                            Constructs.here()
+                                + " [finishAsyncAny] found task in my local pool: WAITING");
+                  }
+                } catch (InterruptedException e) {
+                }
+              }
+            }
+
+            Constructs.immediateAsyncAt(
+                placesReady.home(),
+                () -> {
+                  synchronized (placesReady.get()) {
+                    placesReady.get().decrementAndGet();
+                    placesReady.get().notifyAll();
+                  }
+                });
+          });
+    }
+
+    synchronized (placesReady.get()) {
+      while (placesReady.get().get() > 0) {
+        try {
+          placesReady.get().wait();
+          ConsolePrinter.getInstance()
+              .println(
+                  Constructs.here()
+                      + " [finishAsyncAny] some places have unfinished tasks: WAITING");
+        } catch (InterruptedException e) {
+          //          e.printStackTrace();
+        }
+      }
+    }
+    // at this point it is guaranteed that all pools are empty
+
     if (FinishAsyncAny.SINGLETON.firstStart == true) {
       finish(
           () -> {
