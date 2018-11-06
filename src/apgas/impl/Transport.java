@@ -281,6 +281,15 @@ public class Transport
     }
   }
 
+  protected void sendImmediate(int place, SerializableRunnable f) {
+    if (place == here) {
+      new Thread(f).start();
+      System.out.println(here + " Transport[sendImmediate]: new Thread started");
+    } else {
+      send(place, f);
+    }
+  }
+
   private boolean live(String uuid) {
     for (final Member member : currentMembers) {
       if (uuid.equals(member.getUuid())) {
