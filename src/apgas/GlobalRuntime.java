@@ -13,6 +13,7 @@ package apgas;
 
 import apgas.impl.GlobalRuntimeImpl;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 
 /**
@@ -26,6 +27,9 @@ public abstract class GlobalRuntime {
 
   /** The command line arguments if the main method of this class is invoked. */
   private static String[] args;
+
+  /** Indicates if all system wide instances are ready, only used on place 0 */
+  public static AtomicInteger readyCounter;
 
   /** Constructs a new {@link GlobalRuntime} instance. */
   protected GlobalRuntime() {}

@@ -9,6 +9,7 @@ import com.hazelcast.map.EntryBackupProcessor;
 import com.hazelcast.map.EntryProcessor;
 import java.io.Serializable;
 import java.util.Map.Entry;
+import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class ExactlyOnceExecutor<T, V extends IncrementalEntryValue> implements Serializable {
@@ -90,6 +91,42 @@ public class ExactlyOnceExecutor<T, V extends IncrementalEntryValue> implements 
       t.printStackTrace(System.out);
     }
     return ret;
+  }
+
+  public Future submitOnKey(IMap<T, V> map, T key, final EntryProcessor<T, V> processor) {
+    final long uid = ExactlyOnceExecutor.uid.incrementAndGet() + ((long) (here().id) << 32);
+    final EntryBackupProcessor backupProcessor = processor.getBackupProcessor();
+    return map.submitToKey(
+        key,
+        new EntryProcessor<T, V>() {
+          private static final long serialVersionUID = -2225168921089863027L;
+
+          @Override
+          public EntryBackupProcessor<T, V> getBackupProcessor() {
+            if (backupProcessor != null) {
+              return (entry) -> {
+                executeOnce(
+                    uid,
+                    entry,
+                    () -> {
+                      backupProcessor.processBackup(entry);
+                    });
+              };
+            } else {
+              return null;
+            }
+          }
+
+          @Override
+          public Object process(Entry<T, V> entry) {
+            return executeOnce(
+                uid,
+                entry,
+                () -> {
+                  return processor.process(entry);
+                });
+          }
+        });
   }
 
   public void submitOnKey(

@@ -14,6 +14,7 @@ package apgas.impl;
 import apgas.Configuration;
 import apgas.DeadPlaceException;
 import apgas.Place;
+import apgas.util.ConsolePrinter;
 import com.hazelcast.config.Config;
 import com.hazelcast.config.ExecutorConfig;
 import com.hazelcast.config.InMemoryFormat;
@@ -34,6 +35,7 @@ import com.hazelcast.core.Member;
 import com.hazelcast.core.MemberAttributeEvent;
 import com.hazelcast.core.MembershipEvent;
 import com.hazelcast.spi.ExecutionService;
+import java.lang.management.ManagementFactory;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
@@ -53,22 +55,22 @@ public class Transport
   private static final String APGAS_FINISH = "apgas:finish";
 
   /** The Hazelcast instance for this JVM. */
-  private final HazelcastInstance hazelcast;
+  private HazelcastInstance hazelcast;
 
   /** The place ID for this JVM. */
-  private final int here;
+  private int here;
 
   /** The current members indexed by place ID. */
   private final Map<Integer, Member> map = new ConcurrentHashMap<>();
 
   /** Past and present members indexed by place ID. */
-  private final IList<Member> allMembers;
+  private IList<Member> allMembers;
 
   /** The local member. */
-  private final Member me;
+  private Member me;
 
   /** Executor service for sending active messages. */
-  private final IExecutorService executor;
+  private IExecutorService executor;
 
   /** The global runtime instance to notify of new and dead places. */
   private final GlobalRuntimeImpl runtime;
@@ -84,6 +86,9 @@ public class Transport
 
   /** Registration ID. */
   private String regItemListener;
+
+  /** Hazelcast config */
+  private final Config config;
 
   /**
    * Initializes the {@link HazelcastInstance} for this global runtime instance.
@@ -105,15 +110,21 @@ public class Transport
       int backupCount) {
     this.runtime = runtime;
     // config
-    final Config config = new Config();
+    config = new Config();
     config.setProperty("hazelcast.logging.type", "none");
     config.setProperty("hazelcast.wait.seconds.before.join", "0");
+    //    TODO: experimental
+    //    config.setProperty("hazelcast.operation.call.timeout.millis", "600000");
     config.setProperty("hazelcast.socket.connect.timeout.seconds", "1");
 
     if (System.getProperty(Configuration.APGAS_PLACES) != null) {
       // experimental
+      //      config.setProperty(
+      //          "hazelcast.partition.count", System.getProperty(Configuration.APGAS_PLACES));
+
       config.setProperty(
-          "hazelcast.partition.count", System.getProperty(Configuration.APGAS_PLACES));
+          "hazelcast.initial.min.cluster.size",
+          "" + System.getProperty(Configuration.APGAS_PLACES));
     }
 
     NetworkConfig networkConfig = config.getNetworkConfig();
@@ -180,22 +191,33 @@ public class Transport
     }
     config.setInstanceName(APGAS);
     config.addListConfig(new ListConfig(APGAS_PLACES).setBackupCount(backupCount));
+  }
 
-    hazelcast = Hazelcast.newHazelcastInstance(config);
-    me = hazelcast.getCluster().getLocalMember();
+  public boolean startHazelcast() {
+    try {
+      hazelcast = Hazelcast.newHazelcastInstance(config);
+      me = hazelcast.getCluster().getLocalMember();
 
-    allMembers = hazelcast.getList(APGAS_PLACES);
-    allMembers.add(me);
-    int id = 0;
-    for (final Member member : allMembers) {
-      if (member.getUuid().equals(me.getUuid())) {
-        break;
+      allMembers = hazelcast.getList(APGAS_PLACES);
+      allMembers.add(me);
+      int id = 0;
+      for (final Member member : allMembers) {
+        if (member.getUuid().equals(me.getUuid())) {
+          break;
+        }
+        ++id;
       }
-      ++id;
-    }
-    here = id;
+      here = id;
 
-    executor = hazelcast.getExecutorService(APGAS_EXECUTOR);
+      executor = hazelcast.getExecutorService(APGAS_EXECUTOR);
+    } catch (Throwable t) {
+      System.err.println(
+          "[APGAS] startHazelcast: "
+              + ManagementFactory.getRuntimeMXBean().getName()
+              + " throws Exception");
+      t.printStackTrace();
+    }
+    return true;
   }
 
   /** Starts monitoring cluster membership events. */
@@ -284,7 +306,8 @@ public class Transport
   protected void sendImmediate(int place, SerializableRunnable f) {
     if (place == here) {
       new Thread(f).start();
-      System.out.println(here + " Transport[sendImmediate]: new Thread started");
+      ConsolePrinter.getInstance()
+          .println("[APGAS]: " + here + " Transport[sendImmediate]: new Thread started");
     } else {
       send(place, f);
     }
