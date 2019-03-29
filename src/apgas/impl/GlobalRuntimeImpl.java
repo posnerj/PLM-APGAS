@@ -48,7 +48,9 @@ import java.util.TreeSet;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.ForkJoinTask;
+import java.util.concurrent.Future;
 import java.util.concurrent.RecursiveAction;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -109,6 +111,8 @@ public final class GlobalRuntimeImpl extends GlobalRuntime {
   private ResultAsyncAny partialResult;
   /** Status of loggerAsyncAny */
   private boolean loggerAsyncAny;
+  /** timeout for apgas runtime starting in seconds */
+  int timeoutStarting = 1200;
 
   /**
    * Constructs a new {@link GlobalRuntimeImpl} instance.
@@ -117,11 +121,12 @@ public final class GlobalRuntimeImpl extends GlobalRuntime {
    */
   public GlobalRuntimeImpl(String[] args) {
     try {
-
+      final long begin = System.nanoTime();
       GlobalRuntimeImpl.runtime = this;
 
       // parse configuration
       final int p = Integer.getInteger(Configuration.APGAS_PLACES, 1);
+      GlobalRuntime.readyCounter = new AtomicInteger(p);
       System.setProperty(Configuration.APGAS_PLACES, Integer.toString(p));
       numLocalWorkers =
           Integer.getInteger(
@@ -284,21 +289,31 @@ public final class GlobalRuntimeImpl extends GlobalRuntime {
 
         while (networkInterfaces.hasMoreElements()) {
           final NetworkInterface ni = networkInterfaces.nextElement();
-          try {
-            if (!InetAddress.getByName(host.split(":")[0]).isReachable(ni, 0, 100)) {
-              if (true == verboseLauncher) {
-                System.err.println(
-                    "[APGAS] host " + host + " is not reachable with network interface " + ni);
+
+          // TODO: dirty hack
+          if ("apgas.impl.MPILeibnizLauncher".equals(launcherName)
+              && false == ni.toString().contains("ib")) {
+            continue;
+          } else {
+            // TODO: old apgas
+            try {
+              if (!InetAddress.getByName(host.split(":")[0]).isReachable(ni, 0, 100)) {
+                if (true == verboseLauncher) {
+                  System.err.println(
+                      "[APGAS] host " + host + " is not reachable with networkinterface " + ni);
+                }
+                continue;
               }
-              continue;
+
+            } catch (Throwable t) {
+              if (true == verboseLauncher) {
+                System.out.println("[APGAS]: unexpected error in finding host");
+              }
+              t.printStackTrace();
             }
-          } catch (Throwable t) {
-            if (true == verboseLauncher) {
-              System.out.println("[APGAS]: unexpected error in finding host");
-            }
-            t.printStackTrace();
           }
 
+          System.err.println("[APGAS] host " + host + " is reachable with network interface " + ni);
           final Enumeration<InetAddress> e = ni.getInetAddresses();
           while (e.hasMoreElements()) {
             final InetAddress inetAddress = e.nextElement();
@@ -367,19 +382,58 @@ public final class GlobalRuntimeImpl extends GlobalRuntime {
                   + ". Using default transport.");
         }
       }
+
+      String _ip = ip;
       if (localTransport == null) {
-        localTransport = new Transport(this, master, ip, launcherName, compact, kryo, backupCount);
+
+        Transport tmpTransport =
+            new Transport(this, master, _ip, launcherName, compact, kryo, backupCount);
+
+        ExecutorService executor = Executors.newFixedThreadPool(1);
+
+        Future<Boolean> future =
+            executor.submit(
+                () -> {
+                  return tmpTransport.startHazelcast();
+                });
+
+        TimeUnit.SECONDS.sleep(10);
+
+        launchPlaces(master, p, java, ip, localLauncher, hosts, verboseLauncher);
+
+        final long beforeFuture = System.nanoTime();
+        while (false == future.isDone()) {
+          final long now = System.nanoTime();
+          if ((now - beforeFuture) / 1E9 > timeoutStarting) {
+            System.err.println(
+                "[APGAS]: "
+                    + ManagementFactory.getRuntimeMXBean().getName()
+                    + " ran into timeout, exit JVM");
+            System.exit(40);
+          }
+
+          TimeUnit.SECONDS.sleep(10);
+          System.err.println(
+              ManagementFactory.getRuntimeMXBean().getName() + " future is not done...waiting");
+        }
+
+        future.get();
+        if (true == verboseLauncher) {
+          System.err.println(ManagementFactory.getRuntimeMXBean().getName() + " future is done");
+        }
+        localTransport = tmpTransport;
       }
+
       this.transport = localTransport;
-      if (true == verboseLauncher) {
-        System.err.println("[APGAS] New place starting at " + localTransport.getAddress() + ".");
-      }
 
       // initialize here
       here = localTransport.here();
       home = new Place(here);
-
       resilientFinishMap = resilient ? localTransport.getResilientFinishMap() : null;
+
+      if (true == verboseLauncher) {
+        System.err.println("[APGAS] New place starting at " + localTransport.getAddress() + ".");
+      }
 
       // install hook on thread 1
       if (master == null) {
@@ -406,44 +460,27 @@ public final class GlobalRuntimeImpl extends GlobalRuntime {
       // start monitoring cluster
       localTransport.start();
 
-      // launch additional places
-      if (master == null && p > 1) {
-        try {
-          final ArrayList<String> command = new ArrayList<>();
-          command.add(java);
-          RuntimeMXBean runtimeMXBean = ManagementFactory.getRuntimeMXBean();
-          List<String> inputArguments = runtimeMXBean.getInputArguments();
-          for (String a : inputArguments) {
-            if (a.contains("-X") == true) {
-              command.add(a);
-            }
-          }
-          command.add("-Duser.dir=" + System.getProperty("user.dir"));
-          // Java 9
-          //                    command.add("-Xbootclasspath:"
-          //                            + ManagementFactory.getRuntimeMXBean().getBootClassPath());
-          command.add("-cp");
-          command.add(System.getProperty("java.class.path"));
-          for (final String property : System.getProperties().stringPropertyNames()) {
-            if (property.startsWith("apgas.")) {
-              command.add("-D" + property + "=" + System.getProperty(property));
-            }
-          }
-          command.add("-D" + Configuration.APGAS_MASTER + "=" + localTransport.getAddress());
-          command.add(getClass().getSuperclass().getCanonicalName());
-
-          localLauncher.launch(p - 1, command, hosts, verboseLauncher);
-        } catch (final Exception t) {
-          // initiate shutdown
-          shutdown();
-          throw t;
-        }
-      }
-
       // wait for enough places to join the global runtime
+      final long beforeMaxPlaces = System.nanoTime();
       while (maxPlace() < p) {
         try {
-          Thread.sleep(100);
+          TimeUnit.SECONDS.sleep(3);
+          if (true == verboseLauncher) {
+            System.err.println(
+                "[APGAS]: "
+                    + ManagementFactory.getRuntimeMXBean().getName()
+                    + " not all places are started, maxPlaces: "
+                    + maxPlace());
+          }
+
+          final long now = System.nanoTime();
+          if ((now - beforeMaxPlaces) / 1E9 > timeoutStarting) {
+            System.err.println(
+                "[APGAS]: "
+                    + ManagementFactory.getRuntimeMXBean().getName()
+                    + " ran into timeout, exit JVM");
+            System.exit(40);
+          }
         } catch (final InterruptedException e) {
         }
         if (localLauncher != null && !localLauncher.healthy()) {
@@ -451,12 +488,162 @@ public final class GlobalRuntimeImpl extends GlobalRuntime {
         }
       }
 
+      if (true == verboseLauncher) {
+        System.err.println(
+            "[APGAS]: "
+                + ManagementFactory.getRuntimeMXBean().getName()
+                + " = "
+                + home
+                + " has been started");
+      }
+
+      ready = true;
+
+      if (here != 0) {
+        if (true == verboseLauncher) {
+          System.err.println("[APGAS] " + here + " sends ready to place 0");
+        }
+        final int _h = here;
+        try {
+          transport.send(
+              0,
+              new UncountedTask(
+                  () -> {
+                    int value = GlobalRuntime.readyCounter.decrementAndGet();
+                    if (true == verboseLauncher) {
+                      System.err.println(
+                          "[APGAS}] "
+                              + _h
+                              + " on place 0 decremented ready counter, is now "
+                              + value);
+                    }
+                  }));
+        } catch (final Throwable e) {
+        }
+      } else {
+        GlobalRuntime.readyCounter.decrementAndGet();
+
+        while (GlobalRuntime.readyCounter.get() > 0) {
+          if (true == verboseLauncher) {
+            System.err.println(
+                "[APGAS]: "
+                    + here
+                    + " not all constructors are ready, waiting...."
+                    + GlobalRuntime.readyCounter.get());
+          }
+          TimeUnit.SECONDS.sleep(1);
+        }
+      }
+
+      if (here == 0) {
+        System.out.println(
+            "[APGAS] Starting Places time: " + ((System.nanoTime() - begin) / 1E9) + " sec");
+      }
+
     } catch (final RuntimeException e) {
       throw e;
     } catch (final Exception e) {
       throw new RuntimeException(e);
     }
-    this.ready = true;
+  }
+
+  private void launchPlaces(
+      String master,
+      int p,
+      String java,
+      Transport localTransport,
+      Launcher localLauncher,
+      List<String> hosts,
+      boolean verboseLauncher) {
+    // launch additional places
+    if (master == null && p > 1) {
+      new Thread(
+              () -> {
+                try {
+                  final ArrayList<String> command = new ArrayList<>();
+                  command.add(java);
+                  RuntimeMXBean runtimeMXBean = ManagementFactory.getRuntimeMXBean();
+                  List<String> inputArguments = runtimeMXBean.getInputArguments();
+                  for (String a : inputArguments) {
+                    if (a.contains("-X") == true) {
+                      command.add(a);
+                    }
+                  }
+                  command.add("-Duser.dir=" + System.getProperty("user.dir"));
+                  // Java 9
+                  //                    command.add("-Xbootclasspath:"
+                  //                            +
+                  // ManagementFactory.getRuntimeMXBean().getBootClassPath());
+                  command.add("-cp");
+                  command.add(System.getProperty("java.class.path"));
+                  for (final String property : System.getProperties().stringPropertyNames()) {
+                    if (property.startsWith("apgas.")) {
+                      command.add("-D" + property + "=" + System.getProperty(property));
+                    }
+                  }
+                  command.add(
+                      "-D" + Configuration.APGAS_MASTER + "=" + localTransport.getAddress());
+                  command.add(getClass().getSuperclass().getCanonicalName());
+
+                  localLauncher.launch(p - 1, command, hosts, verboseLauncher);
+                } catch (final Exception t) {
+                  // initiate shutdown
+                  shutdown();
+                  // TODO
+                  //        throw t;
+                }
+              })
+          .start();
+    }
+  }
+
+  private void launchPlaces(
+      String master,
+      int p,
+      String java,
+      String ip,
+      Launcher localLauncher,
+      List<String> hosts,
+      boolean verboseLauncher) {
+    // launch additional places
+    if (master == null && p > 1) {
+      new Thread(
+              () -> {
+                try {
+                  final ArrayList<String> command = new ArrayList<>();
+                  command.add(java);
+                  RuntimeMXBean runtimeMXBean = ManagementFactory.getRuntimeMXBean();
+                  List<String> inputArguments = runtimeMXBean.getInputArguments();
+                  for (String a : inputArguments) {
+                    if (a.contains("-X") == true) {
+                      command.add(a);
+                    }
+                  }
+                  command.add("-Duser.dir=" + System.getProperty("user.dir"));
+                  // Java 9
+                  //                    command.add("-Xbootclasspath:"
+                  //                            +
+                  // ManagementFactory.getRuntimeMXBean().getBootClassPath());
+                  command.add("-cp");
+                  command.add(System.getProperty("java.class.path"));
+                  for (final String property : System.getProperties().stringPropertyNames()) {
+                    if (property.startsWith("apgas.")) {
+                      command.add("-D" + property + "=" + System.getProperty(property));
+                    }
+                  }
+                  command.add("-D" + Configuration.APGAS_MASTER + "=" + ip + ":5701");
+                  command.add(getClass().getSuperclass().getCanonicalName());
+
+                  localLauncher.launch(p - 1, command, hosts, verboseLauncher);
+                } catch (final Exception t) {
+                  // initiate shutdown
+                  shutdown();
+                  // TODO
+                  //        throw t;
+                }
+              })
+          .start();
+    }
   }
 
   private static Worker currentWorker() {
@@ -632,6 +819,7 @@ public final class GlobalRuntimeImpl extends GlobalRuntime {
     final Finish finish =
         worker == null || worker.task == null ? NullFinish.SINGLETON : worker.task.finish;
     finish.spawn(p.id);
+
     new Task(finish, f, here).asyncAt(p.id);
   }
 
