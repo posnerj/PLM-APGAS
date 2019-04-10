@@ -119,8 +119,8 @@ public class Transport
 
     if (System.getProperty(Configuration.APGAS_PLACES) != null) {
       // experimental
-      //      config.setProperty(
-      //          "hazelcast.partition.count", System.getProperty(Configuration.APGAS_PLACES));
+      config.setProperty(
+          "hazelcast.partition.count", System.getProperty(Configuration.APGAS_PLACES));
 
       config.setProperty(
           "hazelcast.initial.min.cluster.size",
