@@ -10,8 +10,8 @@ apply plugin: 'idea'
 apply plugin: 'eclipse'
 apply plugin: "com.diffplug.gradle.spotless"
 
-sourceCompatibility = 11
-targetCompatibility = 11
+sourceCompatibility = 12
+targetCompatibility = 12
 
 repositories {
     mavenCentral()
@@ -31,15 +31,18 @@ sourceSets {
 }
 
 
-task copyToLib << {
-    delete fileTree(dir: "lib")
-    [ 'compile','runtime','testCompile' ].each { mode ->
-        copy {
-            from configurations.getByName(mode).files
-            into 'lib'
+task copyToLib {
+    doLast {
+        delete fileTree(dir: "lib")
+        ['compile', 'runtime', 'testCompile'].each { mode ->
+            copy {
+                from configurations.getByName(mode).files
+                into 'lib'
+            }
         }
     }
 }
+
 
 spotless {
     java {
