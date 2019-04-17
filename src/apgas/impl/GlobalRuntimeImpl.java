@@ -422,6 +422,7 @@ public final class GlobalRuntimeImpl extends GlobalRuntime {
           System.err.println(ManagementFactory.getRuntimeMXBean().getName() + " future is done");
         }
         localTransport = tmpTransport;
+        executor.shutdown();
       }
 
       this.transport = localTransport;
