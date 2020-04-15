@@ -8,6 +8,10 @@ Examples, benchmarks and fault tolerant global load balancing frameworks are con
 
 Related Papers:
 
+Jonas Posner. Locality-Flexible and Cancelable Tasks for the APGAS Library. Poster. EuroHPC Summit Week, PRACEdays, 2020.
+
+Jonas Posner, Mia Reitz, and Claudia Fohry. A Comparison of Application-Level Fault Tolerance Schemes for Task Pools. Future Generation Computer Systems (Special Issue), 2019.
+
 J. Posner, M. Reitz, C. Fohry: Comparison of the HPC and Big Data Java Libraries Spark, PCJ and APGAS; Supercomputing, Parallel Applications Workshop (PAW-ATM), 2018, pp. 11-22.
 
 C. Fohry, J. Posner, M. Reitz: A Selective and Incremental Backup Scheme for Task Pools; Proc. Int. Conf. on High Performance Computing & Simulation (HPCS), 2018, pp. 621-628.
